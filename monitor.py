@@ -5,15 +5,13 @@ import os
 import requests
 import subprocess
 
-# 從 Render 的環境變數中讀取敏感資訊
+# 讀取環境變數
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO = "xsa520/v264_guardian"  # << 已正確設定你的 GitHub 倉庫
+GITHUB_REPO = "xsa520/v264_guardian"  # << 你的 GitHub 倉庫路徑
 
 STATUS_FILE = "account_status.json"
-
-# 預設初始帳戶狀態
 account_status = {
     "total_assets": 10000,
     "total_trades": 0,
@@ -21,7 +19,6 @@ account_status = {
     "total_profit": 0
 }
 
-# 載入上次保存的帳戶狀態
 def load_account_status():
     global account_status
     if os.path.exists(STATUS_FILE):
@@ -31,12 +28,10 @@ def load_account_status():
     else:
         print("⚠️ 沒有找到舊資料，從初始設定開始")
 
-# 儲存目前帳戶狀態
 def save_account_status():
     with open(STATUS_FILE, "w") as f:
         json.dump(account_status, f)
 
-# 傳送 Telegram 訊息
 def send_message(text):
     url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": text}
@@ -45,22 +40,52 @@ def send_message(text):
     except Exception as e:
         print(f"發送訊息失敗: {e}")
 
-# 使用 git push 備份資料到 GitHub
 def git_backup(filename):
     try:
         subprocess.run(["git", "add", filename], check=True)
         today = datetime.date.today().isoformat()
-        commit_message = f"Auto Weekly Backup: {today}"
+        commit_message = f"Auto Backup: {today}"
         subprocess.run(["git", "commit", "-m", commit_message], check=True)
         subprocess.run([
             "git", "push",
             f"https://{GITHUB_TOKEN}@github.com/{GITHUB_REPO}.git"
         ], check=True)
-        print(f"✅ 成功推送備份檔：{filename}")
+        print(f"✅ 成功推送備份檔案：{filename}")
     except Exception as e:
         print(f"❌ Git 備份失敗：{e}")
 
-# 主監控邏輯
+def generate_backup_filename(prefix):
+    today = datetime.date.today()
+    return f"{prefix}_{today}.json"
+
+def generate_month_backup():
+    today = datetime.date.today()
+    if today.day == 1:
+        last_month = today.replace(day=1) - datetime.timedelta(days=1)
+        filename = f"Month_Report_{last_month.strftime('%Y-%m')}.json"
+        with open(filename, "w") as f:
+            json.dump(account_status, f)
+        git_backup(filename)
+
+def generate_quarter_backup():
+    today = datetime.date.today()
+    if today.month in [1, 4, 7, 10] and today.day == 1:
+        last_quarter_month = today.month - 1
+        quarter = (last_quarter_month // 3) + 1
+        filename = f"Quarter_Report_{today.year}-Q{quarter}.json"
+        with open(filename, "w") as f:
+            json.dump(account_status, f)
+        git_backup(filename)
+
+def generate_year_backup():
+    today = datetime.date.today()
+    if today.month == 1 and today.day == 1:
+        last_year = today.year - 1
+        filename = f"Annual_Report_{last_year}.json"
+        with open(filename, "w") as f:
+            json.dump(account_status, f)
+        git_backup(filename)
+
 def monitor():
     global account_status
     load_account_status()
@@ -68,7 +93,7 @@ def monitor():
     while True:
         now = datetime.datetime.utcnow()
 
-        # 每天一次健康檢查（遇異常才推播）
+        # 每天 API 健康巡檢
         try:
             response = requests.get("https://google.com", timeout=10)
             if response.status_code != 200:
@@ -76,7 +101,7 @@ def monitor():
         except Exception as e:
             send_message(f"❗【緊急警報】無法連線至目標服務：{e}")
 
-        # 每週一 UTC 0:00 推播資產報告與備份
+        # 每週一推播資產報告
         if now.weekday() == 0 and now.hour == 0 and now.minute == 0:
             report = (
                 f"📊【本週資產報告】\n"
@@ -86,17 +111,20 @@ def monitor():
             )
             send_message(report)
 
-            # 自動生成備份檔名
             monday = (datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday()))
             filename = f"V26_backup_{monday}.json"
             with open(filename, "w") as f:
                 json.dump(account_status, f)
-
             git_backup(filename)
-            time.sleep(60)  # 防止重複推播/備份
+            time.sleep(60)  # 防止重複推播
+
+        # 每天檢查是否月底、季底、年末，自動備份
+        generate_month_backup()
+        generate_quarter_backup()
+        generate_year_backup()
 
         save_account_status()
-        time.sleep(86400)  # 每天執行一次
+        time.sleep(86400)  # 每天跑一次
 
 if __name__ == "__main__":
     monitor()
