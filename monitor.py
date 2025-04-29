@@ -1,4 +1,4 @@
-# ======== monitor.py (V27版) 開始 ========
+# ======== monitor.py (V27升級版) 開始 ========
 
 import json
 import time
@@ -17,6 +17,7 @@ TELEGRAM_CHAT_ID = '你的Telegram用戶ID'
 # 初始化狀態
 last_heartbeat_time = 0
 defense_mode_active = False
+last_restart_time = datetime.utcnow()
 
 def send_telegram_message(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -31,17 +32,25 @@ def send_telegram_message(message):
 
 def fetch_market_data():
     # 這裡用假數據模擬，未來可以接真實指數資料
-    return -1.6  # 模擬市場下跌 1.6%，觸發異常
+    return -1.6  # 模擬市場下跌1.6%，觸發異常
 
 def perform_trade_logic():
     if defense_mode_active:
         print("市場異常，暫停新開倉。")
         return
-    # 這裡是正常開倉邏輯
+    # 正常開倉邏輯
     if USE_FUTU_API:
         place_order(stock_code="AAPL", price=150, quantity=10, direction="BUY")
     else:
         print("虛擬下單：買進 AAPL 10股")
+
+def check_data_integrity():
+    now = datetime.utcnow()
+    uptime_minutes = (now - last_restart_time).total_seconds() / 60
+    if uptime_minutes >= 1440:  # 運行超過24小時
+        return "✅資料完整"
+    else:
+        return "⚠️資料可能不完整"
 
 def monitor_loop():
     global last_heartbeat_time, defense_mode_active
@@ -52,7 +61,8 @@ def monitor_loop():
 
         # 心跳回報
         if seconds_since_last_heartbeat >= HEARTBEAT_INTERVAL_HOURS * 3600:
-            send_telegram_message(f"✅ 系統心跳正常：{current_time.strftime('%Y-%m-%d %H:%M:%S UTC')}")
+            status = check_data_integrity()
+            send_telegram_message(f"✅ 系統心跳正常：{current_time.strftime('%Y-%m-%d %H:%M:%S UTC')} | {status}")
             last_heartbeat_time = current_time.timestamp()
 
         # 市場異常監控
@@ -77,4 +87,4 @@ def monitor_loop():
 if __name__ == "__main__":
     monitor_loop()
 
-# ======== monitor.py (V27版) 結束 ========
+# ======== monitor.py (V27升級版) 結束 ========
