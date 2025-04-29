@@ -5,11 +5,11 @@ import os
 import requests
 import subprocess
 
-# 讀取環境變數
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 CHAT_ID = os.getenv("CHAT_ID")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO = "xsa520/v264_guardian"  # << 你的 GitHub 倉庫路徑
+GITHUB_REPO = "xsa520/v264_guardian"
+HEARTBEAT_MODE = os.getenv("HEARTBEAT_MODE", "OFF")  # 預設不開
 
 STATUS_FILE = "account_status.json"
 account_status = {
@@ -18,6 +18,8 @@ account_status = {
     "successful_trades": 0,
     "total_profit": 0
 }
+
+last_heartbeat_hour = -1  # 記錄上次發送的時段
 
 def load_account_status():
     global account_status
@@ -86,6 +88,19 @@ def generate_year_backup():
             json.dump(account_status, f)
         git_backup(filename)
 
+def heartbeat_check(now):
+    global last_heartbeat_hour
+    if HEARTBEAT_MODE.upper() != "ON":
+        return
+    if now.hour % 6 == 0 and now.hour != last_heartbeat_hour:
+        text = (
+            f"✅【系統心跳回報】\n"
+            f"時間：{now.strftime('%Y-%m-%d %H:%M')} UTC\n"
+            f"目前總資產：{account_status['total_assets']} 美元"
+        )
+        send_message(text)
+        last_heartbeat_hour = now.hour
+
 def monitor():
     global account_status
     load_account_status()
@@ -93,7 +108,7 @@ def monitor():
     while True:
         now = datetime.datetime.utcnow()
 
-        # 每天 API 健康巡檢
+        # 健康巡檢
         try:
             response = requests.get("https://google.com", timeout=10)
             if response.status_code != 200:
@@ -101,7 +116,7 @@ def monitor():
         except Exception as e:
             send_message(f"❗【緊急警報】無法連線至目標服務：{e}")
 
-        # 每週一推播資產報告
+        # 每週一報告
         if now.weekday() == 0 and now.hour == 0 and now.minute == 0:
             report = (
                 f"📊【本週資產報告】\n"
@@ -116,15 +131,18 @@ def monitor():
             with open(filename, "w") as f:
                 json.dump(account_status, f)
             git_backup(filename)
-            time.sleep(60)  # 防止重複推播
+            time.sleep(60)
 
-        # 每天檢查是否月底、季底、年末，自動備份
+        # 心跳
+        heartbeat_check(now)
+
+        # 備份：月報、季報、年報
         generate_month_backup()
         generate_quarter_backup()
         generate_year_backup()
 
         save_account_status()
-        time.sleep(86400)  # 每天跑一次
+        time.sleep(86400)  # 每日一次
 
 if __name__ == "__main__":
     monitor()
