@@ -86,5 +86,7 @@ def monitor_loop():
 
 if __name__ == "__main__":
     monitor_loop()
+def run_monitor():
+    monitor_loop()
 
 # ======== monitor.py (V27升級版) 結束 ========
